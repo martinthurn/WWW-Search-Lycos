@@ -69,7 +69,7 @@ use strict;
 use warnings;
 
 my
-$VERSION = do { my @r = (q$Revision: 2.223 $ =~ /\d+/g); sprintf "%d."."%03d" x $#r, @r };
+$VERSION = 2.225;
 our $MAINTAINER = 'Martin Thurn <mthurn@cpan.org>';
 
 use Carp;
@@ -109,10 +109,10 @@ sub native_setup_search
     {
     $self->{'search_base_url'} = 'http://search.lycos.com';
     $self->{_options} = {
-                         'search_url' => $self->{'search_base_url'} .'/default.asp',
-                         'query' => $native_query,
-                         'loc' => 'searchbox',
-                         'tab' => 'web',
+                         'search_url' => $self->{'search_base_url'} .'/web/',
+                         'q' => $native_query,
+                         # 'loc' => 'searchbox',
+                         # 'tab' => 'web',
                         };
     } # if
 
@@ -150,27 +150,28 @@ sub preprocess_results_page_OFF
   } # preprocess_results_page
 
 
-sub parse_tree
+sub _parse_tree
   {
   my $self = shift;
   my $oTree = shift;
+  warn " DDD start Lycos::_parse_tree()\n" if (3 <= $self->{_debug});
   my $hits_found = 0;
   unless ($self->approximate_result_count)
     {
     my $oTITLE = $oTree->look_down(
-                                   _tag => 'strong',
-                                   class => 'ltGry',
+                                   _tag => 'div',
+                                   class => 'search-numbers',
                                   );
     if (ref $oTITLE)
       {
       my $sRC = $oTITLE->parent->as_text;
-      print STDERR " +   RC == $sRC\n" if 2 <= $self->{_debug};
-      if ($sRC =~ m!\s*\d+\s+thru\s+\d+\s+of\s+([0-9,]+)\b!i)
+      warn " DDD   RC == $sRC\n" if 2 <= $self->{_debug};
+      if ($sRC =~ m!\b([0-9,]+)\s*results\b!i)
         {
         my $sCount = $1;
-        print STDERR " +     raw    count == $sCount\n" if 3 <= $self->{_debug};
+        warn " DDD     raw    count == $sCount\n" if 3 <= $self->{_debug};
         $sCount =~ s!,!!g;
-        print STDERR " +     cooked count == $sCount\n" if 3 <= $self->{_debug};
+        warn " DDD     cooked count == $sCount\n" if 3 <= $self->{_debug};
         $self->approximate_result_count($sCount);
         } # if
       } # if
@@ -179,30 +180,26 @@ sub parse_tree
   my $sScore = '';
   my $sSize = '';
   my $sDate = '';
-  my @aoIS = $oTree->look_down(_tag => 'a',
-                               class => 'large',
+  my @aoIS = $oTree->look_down(_tag => 'h2',
+                               class => 'result-title',
                               );
  IS_TAG:
   foreach my $oIS (@aoIS)
     {
     next IS_TAG unless ref $oIS;
-    print STDERR " +   oIS is ===". $oIS->as_HTML ."===\n" if 2 <= $self->{_debug};
-    my $sURL = $oIS->attr('href');
+    warn " DDD   oIS is ===". $oIS->as_HTML ."===\n" if 2 <= $self->{_debug};
     my $sTitle = $oIS->as_text;
 
     my $oTDhit = $oIS->parent;
     next IS_TAG unless ref $oTDhit;
-    print STDERR " +   oTDhit is ===". $oTDhit->as_HTML ."===\n" if 2 <= $self->{_debug};
-    $oIS->detach;
-    $oIS->delete;
-    my $oSPAN = $oTDhit->look_down(_tag => 'span');
-    if (ref $oSPAN)
-      {
-      $oSPAN->detach;
-      $oSPAN->delete;
-      } # if
-    my $sDesc = $oTDhit->as_text;
-    print STDERR " +   found desc ===$sDesc===\n" if 2 <= $self->{_debug};
+    warn " DDD   oTDhit is ===". $oTDhit->as_HTML ."===\n" if 2 <= $self->{_debug};
+    my $oSPAN = $oTDhit->look_down(_tag => 'span',
+                                   class => 'result-url');
+    my $sURL = 'http://'. $oSPAN->as_text;
+    $oSPAN = $oTDhit->look_down(_tag => 'span',
+                                class => 'result-description');
+    my $sDesc = $oSPAN->as_text;
+    warn " DDD   found desc ===$sDesc===\n" if 2 <= $self->{_debug};
 
     my $hit = new WWW::Search::Result;
     $hit->add_url($sURL);
@@ -214,19 +211,19 @@ sub parse_tree
     } # foreach $oB
   # Find the next link, if any:
   my @aoA = $oTree->look_down(_tag => 'a',
-                             sub { $_[0]->as_text eq 'Next >' } );
+                             sub { $_[0]->as_text eq 'Next' } );
  A_TAG:
   # We want the last "next" link on the page:
   my $oA = $aoA[-1];
   if (ref $oA)
     {
-    print STDERR " +   oAnext is ===", $oA->as_HTML, "===\n" if 2 <= $self->{_debug};
+    warn " DDD   oAnext is ===", $oA->as_HTML, "===\n" if 2 <= $self->{_debug};
     $self->{_next_url} = $self->absurl($self->{'_prev_url'}, $oA->attr('href'));
     } # if
  SKIP_NEXT_LINK:
 
   return $hits_found;
-  } # parse_tree
+  } # _parse_tree
 
 
 sub _strip
