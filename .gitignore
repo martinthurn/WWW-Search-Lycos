@@ -6,9 +6,11 @@ inc/
 Build
 !Build/
 Build.bat
+*.gz
 .last_cover_stats
 /Makefile
 /Makefile.old
+/MANIFEST
 /MANIFEST.bak
 /META.yml
 /META.json
